@@ -1,203 +1,270 @@
-# template-typescript-lib
+# crossmod
 
-[![trunk](https://github.com/jasonkuhrt/template-typescript-lib/actions/workflows/trunk.yaml/badge.svg)](https://github.com/jasonkuhrt/template-typescript-lib/actions/workflows/trunk.yaml)
+Auto-generate and maintain TypeScript re-export index files.
 
-Project template for TypeScript libraries optimized for tree-shaking.
+<!-- toc -->
 
-## Features
+- [Install](#install)
+- [Quick Start](#quick-start)
+- [Config](#config)
+  - [Options](#options)
+  - [Rule Options](#rule-options)
+  - [Module Pattern](#module-pattern)
+- [Generated Output](#generated-output)
+- [CLI Commands](#cli-commands)
+  - [generate](#generate)
+  - [check](#check)
+  - [init](#init)
+  - [watch](#watch)
+  - [doctor](#doctor)
+  - [daemon](#daemon)
+- [Extension Auto-Detection](#extension-auto-detection)
+- [Formatter Auto-Detection](#formatter-auto-detection)
+- [Programmatic API](#programmatic-api)
+- [License](#license)
 
-- ESM-only with proper [`exports`](https://nodejs.org/api/packages.html#exports) configuration
-- Tree-shaking optimized (see [Tree Shaking](#tree-shaking))
-- Types: TypeScript via [tsgo](https://github.com/nicolo-ribaudo/tsgo)
-- Tests: [Vitest](https://vitest.dev)
-- Linting: [oxlint](https://oxc.rs/docs/guide/usage/linter) + [actionlint](https://github.com/rhysd/actionlint)
-- Formatting: [dprint](https://dprint.dev)
-- Package validation: [publint](https://publint.dev) + [attw](https://github.com/arethetypeswrong/arethetypeswrong.github.io)
-- Publishing: [Dripip](https://github.com/prisma-labs/dripip)
-- CI: GitHub Actions
+<!-- tocstop -->
+
+## Install
+
+```sh
+pnpm add -D crossmod
+```
 
 ## Quick Start
 
 ```sh
-corepack enable
+# Create a starter config
+crossmod init
+
+# Generate index files
+crossmod generate
+
+# Check for drift (CI mode)
+crossmod check
+
+# Watch for changes
+crossmod watch
 ```
 
-### GitHub Template
+The `xm` alias is available for all commands:
 
 ```sh
-gh repo create mylib --template jasonkuhrt/template-typescript-lib --clone --public && \
-cd mylib && \
-pnpm install && \
-pnpm bootstrap
+xm generate
+xm check
 ```
 
-Then [setup a repo secret](https://docs.github.com/en/actions/security-guides/encrypted-secrets) called `NPM_TOKEN` for CI publishing.
+## Config
 
-### Manual Clone
-
-```sh
-gh repo clone jasonkuhrt/template-typescript-lib mylib && \
-cd mylib && \
-pnpm install && \
-pnpm bootstrap
-```
-
-## Tree Shaking
-
-This template is configured for aggressive tree-shaking. Bundlers (webpack, esbuild, rollup, vite) can eliminate unused code when consumers import from your library.
-
-### Configuration
-
-| Field                                                                                          | Value                 | Purpose                                |
-| ---------------------------------------------------------------------------------------------- | --------------------- | -------------------------------------- |
-| [`type`](https://nodejs.org/api/packages.html#type)                                            | `"module"`            | ESM output (required for tree-shaking) |
-| [`sideEffects`](https://webpack.js.org/guides/tree-shaking/#mark-the-file-as-side-effect-free) | `false`               | Tells bundlers all modules are pure    |
-| [`exports`](https://nodejs.org/api/packages.html#exports)                                      | Explicit entry points | Black-boxes package internals          |
-
-### TypeScript Settings
-
-| Option                                                                                 | Purpose                                                 |
-| -------------------------------------------------------------------------------------- | ------------------------------------------------------- |
-| [`verbatimModuleSyntax`](https://www.typescriptlang.org/tsconfig#verbatimModuleSyntax) | Preserves ES module syntax for bundlers                 |
-| [`isolatedModules`](https://www.typescriptlang.org/tsconfig#isolatedModules)           | Ensures code is compatible with single-file transpilers |
-
-### Validation
-
-Two tools validate your package works correctly for consumers:
-
-- **[publint](https://publint.dev)** - Checks packaging for compatibility across environments
-- **[attw](https://arethetypeswrong.github.io)** - Checks TypeScript types resolve correctly across module resolution modes
-
-Run both with `pnpm check`.
-
-### Code Patterns
-
-#### Prefer named exports
-
-Named exports tree-shake more reliably than default exports. Default exports can cause issues with [CommonJS interop](https://github.com/arethetypeswrong/arethetypeswrong.github.io/blob/main/docs/problems/FalseExportDefault.md).
+Create `crossmod.config.ts` in your project root:
 
 ```ts
-// Preferred
-export const foo = () => {}
-export const bar = () => {}
+import { defineConfig } from 'crossmod'
 
-// Avoid
-export default { foo, bar }
+export default defineConfig({
+  rules: [
+    {
+      dirs: 'src/lib/**',
+      modules: [{ include: './*.ts', style: 'star' }],
+    },
+    {
+      dirs: 'src/utils',
+      modules: [{ include: './*.ts', style: 'namespace' }],
+    },
+  ],
+})
 ```
 
-#### Pure annotations
+Config files are loaded with [jiti](https://github.com/unjs/jiti), so `.ts`, `.js`, and `.mjs` extensions all work.
 
-For module-level function calls (HOCs, factories), the [`/*#__PURE__*/`](https://webpack.js.org/guides/tree-shaking/#mark-a-function-call-as-side-effect-free) annotation tells bundlers the call is side-effect free. See [Terser](https://github.com/terser/terser#annotations) and [UglifyJS](https://github.com/nicolo-ribaudo/uglify-js#annotations) docs.
+### Options
 
-### sideEffects
+| Option       | Type                                                              | Default                                             | Description                           |
+| ------------ | ----------------------------------------------------------------- | --------------------------------------------------- | ------------------------------------- |
+| `rules`      | `BarrelRule[]`                                                    | `[]`                                                | Rules defining which dirs to manage   |
+| `extensions` | `'auto' \| 'none' \| '.js' \| '.ts'`                              | `'auto'`                                            | Import specifier extension mode       |
+| `exclude`    | `string[]`                                                        | `['*.test.*', '*.spec.*', '*.stories.*', '*.d.ts']` | Glob patterns to exclude from barrels |
+| `barrelFile` | `string`                                                          | `'index.ts'`                                        | Name of the generated barrel file     |
+| `formatter`  | `'auto' \| 'biome' \| 'dprint' \| 'prettier' \| 'oxfmt' \| false` | `'auto'`                                            | Formatter to run on generated files   |
 
-Bundlers cannot always statically determine if code has side effects. The `sideEffects` field [hints to bundlers](https://webpack.js.org/guides/tree-shaking/#mark-the-file-as-side-effect-free) that your modules are "pure" and safe to prune if unused.
+### Rule Options
 
-**Important**: If you add modules with side effects (e.g., CSS imports, polyfills, or code that runs on import), update `sideEffects` to an array:
+| Option         | Type                       | Default                               | Description                              |
+| -------------- | -------------------------- | ------------------------------------- | ---------------------------------------- |
+| `dirs`         | `string`                   | _required_                            | Glob pattern matching directories        |
+| `modules`      | `(string \| ModuleGlob)[]` | `[{ include: './*', style: 'star' }]` | Module patterns to include               |
+| `defaultStyle` | `'star' \| 'namespace'`    | `'star'`                              | Default export style for string patterns |
 
-```json
-{
-  "sideEffects": ["./src/polyfill.js", "**/*.css"]
-}
+### Module Pattern
+
+Each module pattern has:
+
+| Field     | Type                    | Description                                           |
+| --------- | ----------------------- | ----------------------------------------------------- |
+| `include` | `string`                | Glob pattern matching files in the dir                |
+| `style`   | `'star' \| 'namespace'` | `star` = `export *`, `namespace` = `export * as Name` |
+
+When a pattern is a plain string, it uses the rule's `defaultStyle`.
+
+## Generated Output
+
+Generated files include a header marker so crossmod can distinguish them from hand-written files:
+
+```ts
+// @generated by crossmod — DO NOT EDIT
+
+export * from './auth.js'
+export * from './billing.js'
 ```
 
-### Barrel Files
+Namespace style:
 
-[Barrel files](https://basarat.gitbook.io/typescript/main-1/barrel) (index.ts files that re-export from other modules) can [inhibit tree-shaking](https://github.com/vercel/next.js/issues/12557) in some bundlers. This template uses a single entry point which is acceptable for small libraries.
+```ts
+// @generated by crossmod — DO NOT EDIT
 
-For larger libraries, consider:
-
-- Multiple entry points via `exports` field
-- Avoiding deep re-export chains
-- Testing your bundle size with [bundlephobia](https://bundlephobia.com) or [pkg-size](https://pkg-size.dev)
-
-### References
-
-- [Webpack Tree Shaking Guide](https://webpack.js.org/guides/tree-shaking/)
-- [Tree-Shaking: A Reference Guide (Smashing Magazine)](https://www.smashingmagazine.com/2021/05/tree-shaking-reference-guide/)
-- [package.json exports field (Node.js)](https://nodejs.org/api/packages.html#exports)
-- [Building TypeScript Libraries (Arrange Act Assert)](https://arrangeactassert.com/posts/building-typescript-libraries/)
-- [Are The Types Wrong?](https://arethetypeswrong.github.io)
-
-## Details
-
-<!-- toc -->
-
-- [TypeScript](#typescript)
-- [Linting](#linting)
-- [Testing](#testing)
-- [Formatting](#formatting)
-- [npm Scripts](#npm-scripts)
-- [CI](#ci)
-- [Zed Settings](#zed-settings)
-
-<!-- tocstop -->
-
-### TypeScript
-
-- Strict settings via [`@tsconfig/strictest`](https://github.com/tsconfig/bases)
-- Node 22 target via [`@tsconfig/node22`](https://github.com/tsconfig/bases)
-- Build cache in `node_modules/.cache`
-- Output includes `declaration`, `declarationMap`, `sourceMap` for optimal consumer DX
-- Source published for go-to-definition support
-
-### Linting
-
-- [oxlint](https://oxc.rs/docs/guide/usage/linter): Rust-based, ~100x faster than ESLint
-- [actionlint](https://github.com/rhysd/actionlint): GitHub Actions workflow validation
-
-### Testing
-
-[Vitest](https://vitest.dev) - fast, ESM-native test runner.
-
-### Formatting
-
-[dprint](https://dprint.dev) - fast Rust-based formatter.
-
-### npm Scripts
-
-Parallel execution via pnpm pattern matching:
-
-| Script          | Description                   |
-| --------------- | ----------------------------- |
-| `check`         | Run all checks in parallel    |
-| `check:format`  | Verify formatting             |
-| `check:lint`    | Run oxlint                    |
-| `check:types`   | Type check with tsgo          |
-| `check:package` | Validate package with publint |
-| `check:exports` | Validate exports with attw    |
-| `check:ci`      | Lint GitHub Actions workflows |
-| `fix`           | Run all fixes in parallel     |
-| `fix:format`    | Fix formatting                |
-| `fix:lint`      | Auto-fix lint issues          |
-| `build`         | Build with tsgo               |
-| `test`          | Run tests                     |
-
-### CI
-
-**PR workflow:**
-
-- actionlint, format, lint, types, publint checks
-- Tests on ubuntu/macos/windows, Node 22
-
-**Trunk workflow:**
-
-- Automated canary release via [Dripip](https://github.com/prisma-labs/dripip)
-
-### Zed Settings
-
-Configure [tsgo](https://zed.dev/extensions/tsgo) globally in `~/.config/zed/settings.json`:
-
-```json
-{
-  "languages": {
-    "TypeScript": {
-      "language_servers": ["tsgo", "!vtsls", "oxc"]
-    }
-  }
-}
+export * as Auth from './auth.js'
+export * as Billing from './billing.js'
 ```
 
----
+Namespace names are derived from filenames via PascalCase conversion (`my-service.ts` becomes `MyService`).
 
-![Repobeats](https://repobeats.axiom.co/api/embed/3c932f1cb76da4ad21328bfdd0ad1c6fbbe76a0b.svg)
+Hand-written index files without the `@generated` header are never overwritten. They show as conflicts in the output.
+
+## CLI Commands
+
+### generate
+
+Generate index files from config rules.
+
+```sh
+crossmod generate [--config <path>] [--dry-run] [--no-cache]
+```
+
+- `--dry-run` previews changes without writing
+- `--config` / `-c` specifies a custom config path
+- `--no-cache` bypasses the scan cache
+
+### check
+
+Check index files for drift. Exits with code 1 if any files are stale. Intended for CI.
+
+```sh
+crossmod check [--config <path>]
+```
+
+### init
+
+Create a starter `crossmod.config.ts`.
+
+```sh
+crossmod init
+```
+
+### watch
+
+Watch for file changes and regenerate affected index files. Reloads config automatically when `crossmod.config.*` changes.
+
+```sh
+crossmod watch [--config <path>]
+```
+
+Uses [@parcel/watcher](https://github.com/parcel-bundler/watcher) for native filesystem events. Filters out self-writes to avoid infinite loops.
+
+### doctor
+
+Diagnose setup, validate config, and lint index files.
+
+```sh
+crossmod doctor [--config <path>] [--fix]
+```
+
+Checks:
+
+- Config file exists and parses
+- Rule glob patterns match directories
+- tsconfig extension mode detection
+- Formatter detection
+- Index file staleness
+- Namespace collisions
+- Unmanaged directories (suggestions)
+
+`--fix` auto-regenerates stale index files.
+
+### daemon
+
+Background daemon management. Runs `watch` in a detached process.
+
+```sh
+crossmod daemon start [--config <path>]
+crossmod daemon stop
+crossmod daemon status
+```
+
+Logs to `node_modules/.cache/crossmod/daemon.log`.
+
+## Extension Auto-Detection
+
+When `extensions` is `'auto'` (the default), crossmod reads your `tsconfig.json` to determine the right import specifier style:
+
+| `moduleResolution`    | `allowImportingTsExtensions`            | Result |
+| --------------------- | --------------------------------------- | ------ |
+| `bundler`             | _any_                                   | `none` |
+| `node16` / `nodenext` | `false` or absent                       | `.js`  |
+| `node16` / `nodenext` | `true` + `noEmit`/`emitDeclarationOnly` | `.ts`  |
+| _other / missing_     | _any_                                   | `none` |
+
+Override with `extensions: '.js'`, `extensions: '.ts'`, or `extensions: 'none'` in your config.
+
+## Formatter Auto-Detection
+
+When `formatter` is `'auto'`, crossmod looks for config files in this order:
+
+1. **biome** -- `biome.json`, `biome.jsonc`
+2. **dprint** -- `dprint.json`, `.dprint.json`
+3. **prettier** -- `.prettierrc`, `.prettierrc.json`, `.prettierrc.yml`, `prettier.config.*`
+
+Falls back to checking `devDependencies` in `package.json`. Set `formatter: false` to disable.
+
+## Programmatic API
+
+```ts
+import { NodeContext } from '@effect/platform-node'
+import {
+  defineConfig,
+  execute,
+  loadConfig,
+  plan,
+  resolveDefaults,
+} from 'crossmod'
+import { Effect } from 'effect'
+
+const config = resolveDefaults({
+  extensions: '.js',
+  rules: [{ dirs: 'src/lib/**' }],
+})
+
+const program = Effect.gen(function*() {
+  const result = yield* plan(config, process.cwd())
+  const written = yield* execute(result)
+  console.log(`Wrote ${written.length} files`)
+})
+
+program.pipe(Effect.provide(NodeContext.layer), Effect.runPromise)
+```
+
+Exports:
+
+| Export                | Description                         |
+| --------------------- | ----------------------------------- |
+| `defineConfig`        | Type-safe config helper             |
+| `resolveDefaults`     | Apply defaults to a raw config      |
+| `loadConfig`          | Load and validate config from disk  |
+| `plan`                | Scan dirs and compute actions       |
+| `execute`             | Write planned actions to disk       |
+| `detectExtensionMode` | Detect extension mode from tsconfig |
+
+Types: `Config`, `ResolvedConfig`, `BarrelRule`, `ResolvedRule`, `ModuleGlob`, `ExportStyle`, `Action`, `PlanResult`, `ExtensionMode`.
+
+## License
+
+MIT

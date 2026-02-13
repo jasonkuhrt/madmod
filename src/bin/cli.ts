@@ -9,11 +9,14 @@ import pc from 'picocolors'
 import { loadConfig } from '../lib/config/loader.js'
 import { resolveDefaults } from '../lib/config/schema.js'
 import { type Action, Action as ActionFactory } from '../lib/core/action.js'
+import { DoctorCheck, formatDoctorResults, runDoctor } from '../lib/core/doctor.js'
 import { detectFormatter, formatFiles } from '../lib/core/formatter.js'
 import { execute, plan } from '../lib/core/planner.js'
+import { getDaemonStatus, startDaemon, stopDaemon } from '../lib/daemon/lifecycle.js'
 import { ConfigInvalid, ConfigNotFound } from '../lib/errors.js'
 import { formatAction, formatDuration, formatSummary } from '../lib/ui/format.js'
 import { symbols } from '../lib/ui/symbols.js'
+import { CONFIG_CHANGED, startWatching, trackWrite } from '../lib/watch/watcher.js'
 
 const pkg = JSON.parse(
   readFileSync(new URL('../../package.json', import.meta.url), 'utf-8'),
@@ -255,9 +258,75 @@ const init = Command.make(
 const watch = Command.make(
   'watch',
   { config: configOption },
-  () =>
+  (opts) =>
     Effect.gen(function*() {
-      yield* Console.log(`\n  ${symbols.info} watch not implemented yet\n`)
+      const cwd = process.cwd()
+      const configPath = Option.getOrUndefined(opts.config)
+
+      const rawConfig = yield* loadConfig(cwd, configPath).pipe(
+        Effect.catchTags({
+          ConfigNotFound: (e) => Effect.flatMap(Console.error(formatError(e)), () => Effect.die('exit')),
+          ConfigInvalid: (e) => Effect.flatMap(Console.error(formatError(e)), () => Effect.die('exit')),
+        }),
+      )
+      let config = resolveDefaults(rawConfig)
+
+      // Initial generation
+      const result = yield* plan(config, cwd)
+      const writtenPaths = yield* execute(result, { onBeforeWrite: trackWrite })
+      const total = result.actions.length
+      yield* Console.log(`\n  ${symbols.pass} Generated ${total} index files`)
+      if (writtenPaths.length > 0) {
+        yield* Console.log(`  ${symbols.pass} ${writtenPaths.length} files written`)
+      }
+
+      yield* Console.log(`  ${symbols.pass} Watching for changes... (Ctrl+C to stop)\n`)
+
+      // Start watching
+      yield* Effect.tryPromise(() =>
+        startWatching(cwd, config, async (affectedDirs) => {
+          const timestamp = new Date().toLocaleTimeString('en-US', { hour12: false })
+
+          // Config change — reload
+          if (affectedDirs.length === 1 && affectedDirs[0] === CONFIG_CHANGED) {
+            console.log(`  [${timestamp}] Config changed — reloading...`)
+            try {
+              const freshConfig = await Effect.runPromise(
+                loadConfig(cwd, configPath).pipe(Effect.provide(NodeContext.layer)),
+              )
+              config = resolveDefaults(freshConfig)
+              console.log(`  [${timestamp}] ${symbols.pass} Reloaded (${config.rules.length} rules)`)
+            } catch (err) {
+              console.error(`  [${timestamp}] ${symbols.fail} Config reload failed:`, err)
+            }
+            return
+          }
+
+          try {
+            const planResult = await Effect.runPromise(
+              plan(config, cwd).pipe(Effect.provide(NodeContext.layer)),
+            )
+            const start = Date.now()
+            const written = await Effect.runPromise(
+              execute(planResult, { onBeforeWrite: trackWrite }).pipe(Effect.provide(NodeContext.layer)),
+            )
+            if (written.length > 0) {
+              const elapsed = Date.now() - start
+              for (const path of written) {
+                const rel = path.replace(`${cwd}/`, '')
+                console.log(
+                  `  [${timestamp}] ${symbols.update}  ${pc.dim(rel)}  ${pc.dim(`\u23F1`)} ${formatDuration(elapsed)}`,
+                )
+              }
+            }
+          } catch (err) {
+            console.error(`  [${timestamp}] ${symbols.fail} Regeneration error:`, err)
+          }
+        })
+      ).pipe(Effect.orDie)
+
+      // Keep the process running
+      yield* Effect.never
     }),
 ).pipe(Command.withDescription('Watch for changes and regenerate index files'))
 
@@ -268,9 +337,17 @@ const watch = Command.make(
 const daemonStart = Command.make(
   'start',
   { config: configOption },
-  () =>
+  (opts) =>
     Effect.gen(function*() {
-      yield* Console.log(`\n  ${symbols.info} daemon start not implemented yet\n`)
+      const cwd = process.cwd()
+      const configPath = Option.getOrUndefined(opts.config)
+      const status = startDaemon(cwd, configPath)
+      if (status.running) {
+        yield* Console.log(`\n  ${symbols.pass} Daemon running (pid ${status.pid})`)
+        yield* Console.log(`  ${pc.dim(`Log: ${status.logFile}`)}\n`)
+      } else {
+        yield* Console.error(`\n  ${symbols.fail} Failed to start daemon\n`)
+      }
     }),
 ).pipe(Command.withDescription('Start background daemon'))
 
@@ -279,7 +356,14 @@ const daemonStop = Command.make(
   {},
   () =>
     Effect.gen(function*() {
-      yield* Console.log(`\n  ${symbols.info} daemon stop not implemented yet\n`)
+      const cwd = process.cwd()
+      const status = getDaemonStatus(cwd)
+      if (!status.running) {
+        yield* Console.log(`\n  ${symbols.info} Daemon is not running\n`)
+        return
+      }
+      stopDaemon(cwd)
+      yield* Console.log(`\n  ${symbols.pass} Daemon stopped\n`)
     }),
 ).pipe(Command.withDescription('Stop background daemon'))
 
@@ -288,7 +372,14 @@ const daemonStatus = Command.make(
   {},
   () =>
     Effect.gen(function*() {
-      yield* Console.log(`\n  ${symbols.info} daemon status not implemented yet\n`)
+      const cwd = process.cwd()
+      const status = getDaemonStatus(cwd)
+      if (status.running) {
+        yield* Console.log(`\n  ${symbols.pass} Daemon running (pid ${status.pid})`)
+        yield* Console.log(`  ${pc.dim(`Log: ${status.logFile}`)}\n`)
+      } else {
+        yield* Console.log(`\n  ${symbols.info} Daemon is not running\n`)
+      }
     }),
 ).pipe(Command.withDescription('Check daemon status'))
 
@@ -310,9 +401,41 @@ const doctor = Command.make(
       Options.withDefault(false),
     ),
   },
-  () =>
+  (opts) =>
     Effect.gen(function*() {
-      yield* Console.log(`\n  ${symbols.info} doctor not implemented yet\n`)
+      const cwd = process.cwd()
+      const configPath = Option.getOrUndefined(opts.config)
+
+      const rawConfig = yield* loadConfig(cwd, configPath).pipe(
+        Effect.catchTags({
+          ConfigNotFound: (e) => Effect.flatMap(Console.error(formatError(e)), () => Effect.die('exit')),
+          ConfigInvalid: (e) => Effect.flatMap(Console.error(formatError(e)), () => Effect.die('exit')),
+        }),
+      )
+      const config = resolveDefaults(rawConfig)
+
+      const checks = yield* runDoctor(config, cwd)
+      yield* Console.log(formatDoctorResults(checks))
+
+      // --fix: auto-apply safe fixes
+      if (opts.fix) {
+        const hasStaleness = pipe(
+          checks,
+          A.some((c) => DoctorCheck.$is('Fail')(c) && c.message.includes('index files are stale')),
+        )
+        if (hasStaleness) {
+          yield* Console.log(`  ${symbols.info} Running generate to fix stale files...\n`)
+          const result = yield* plan(config, cwd)
+          const written = yield* execute(result)
+          yield* Console.log(`  ${symbols.pass} Fixed: ${written.length} files written\n`)
+        }
+      }
+
+      // Exit code 1 if any failures
+      const hasFailures = pipe(checks, A.some(DoctorCheck.$is('Fail')))
+      if (hasFailures) {
+        yield* Effect.die({ _tag: 'exit' as const, code: 1 })
+      }
     }),
 ).pipe(Command.withDescription('Diagnose setup, validate config, and lint index files'))
 
