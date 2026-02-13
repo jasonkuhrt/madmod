@@ -46,7 +46,7 @@ const formatError = Match.type<ConfigNotFound | ConfigInvalid>().pipe(
     'ConfigNotFound',
     (e) =>
       `${symbols.fail} No config found in ${e.cwd}\n  Searched: ${e.searched.join(', ')}\n  Run ${
-        pc.bold('crossmod init')
+        pc.bold('madmod init')
       } to create one`,
   ),
   Match.tag('ConfigInvalid', (e) => `${symbols.fail} Invalid config at ${e.path}\n  ${e.message}`),
@@ -197,7 +197,7 @@ const check = Command.make(
           yield* Console.log(formatAction(action, cwd))
         }
 
-        yield* Console.log(`\n  Run ${pc.bold('crossmod generate')} to fix.`)
+        yield* Console.log(`\n  Run ${pc.bold('madmod generate')} to fix.`)
         yield* Effect.die({ _tag: 'exit' as const, code: 1 })
       } else {
         const total = result.actions.length
@@ -214,7 +214,7 @@ const check = Command.make(
 // init
 // ---------------------------------------------------------------------------
 
-const starterConfig = `import { defineConfig } from 'crossmod'
+const starterConfig = `import { defineConfig } from 'madmod'
 
 export default defineConfig({
   rules: [
@@ -233,23 +233,23 @@ const init = Command.make(
     Effect.gen(function*() {
       const cwd = process.cwd()
       const fs = yield* FileSystem.FileSystem
-      const configPath = `${cwd}/crossmod.config.ts`
+      const configPath = `${cwd}/madmod.config.ts`
 
       const exists = yield* fs.exists(configPath)
       if (exists) {
-        yield* Console.error(`\n  ${symbols.fail} crossmod.config.ts already exists\n`)
+        yield* Console.error(`\n  ${symbols.fail} madmod.config.ts already exists\n`)
         return
       }
 
       yield* fs.writeFileString(configPath, starterConfig)
 
-      yield* Console.log(`\n  ${symbols.pass} Created crossmod.config.ts`)
+      yield* Console.log(`\n  ${symbols.pass} Created madmod.config.ts`)
       yield* Console.log(`\n  Next steps:`)
       yield* Console.log(`    1. Edit the config to define your rules`)
-      yield* Console.log(`    2. Run ${pc.bold('crossmod generate')} to create index files`)
-      yield* Console.log(`    3. Run ${pc.bold('crossmod doctor')} to validate your setup\n`)
+      yield* Console.log(`    2. Run ${pc.bold('madmod generate')} to create index files`)
+      yield* Console.log(`    3. Run ${pc.bold('madmod doctor')} to validate your setup\n`)
     }),
-).pipe(Command.withDescription('Create a starter crossmod.config.ts'))
+).pipe(Command.withDescription('Create a starter madmod.config.ts'))
 
 // ---------------------------------------------------------------------------
 // watch (placeholder)
@@ -443,7 +443,7 @@ const doctor = Command.make(
 // Root command
 // ---------------------------------------------------------------------------
 
-const crossmod = Command.make('crossmod').pipe(
+const madmod = Command.make('madmod').pipe(
   Command.withDescription('Auto-generate and maintain TypeScript re-export index files'),
   Command.withSubcommands([generate, check, init, watch, doctor, daemon]),
 )
@@ -452,8 +452,8 @@ const crossmod = Command.make('crossmod').pipe(
 // Entry point
 // ---------------------------------------------------------------------------
 
-const cli = Command.run(crossmod, {
-  name: 'crossmod',
+const cli = Command.run(madmod, {
+  name: 'madmod',
   version: pkg.version,
 })
 

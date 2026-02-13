@@ -6,7 +6,7 @@ import picomatch from 'picomatch'
 import type { ResolvedConfig } from '../config/schema.js'
 
 // Module-level HashSet for self-write tracking (mutated via reassignment).
-// Tracks absolute paths of files crossmod just wrote, so the watcher
+// Tracks absolute paths of files madmod just wrote, so the watcher
 // can filter out its own write events and avoid re-triggering generation.
 let recentWrites = HashSet.empty<string>()
 
@@ -26,7 +26,7 @@ export async function startWatching(
     cwd,
     async (err, events) => {
       if (err) {
-        console.error('crossmod: watcher error:', err)
+        console.error('madmod: watcher error:', err)
         return
       }
 
@@ -64,7 +64,7 @@ function matchEventsToRules(
     const relPath = relative(cwd, event.path)
 
     // Config file change — signal a full reload
-    if (/^crossmod\.config\.(ts|js|mjs)$/.test(relPath)) {
+    if (/^madmod\.config\.(ts|js|mjs)$/.test(relPath)) {
       return [CONFIG_CHANGED]
     }
 

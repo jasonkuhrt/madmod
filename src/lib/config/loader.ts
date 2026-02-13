@@ -5,7 +5,7 @@ import { resolve } from 'node:path'
 import { ConfigInvalid, ConfigNotFound } from '../errors.js'
 import { Config } from './schema.js'
 
-const CONFIG_NAMES = ['crossmod.config.ts', 'crossmod.config.js', 'crossmod.config.mjs']
+const CONFIG_NAMES = ['madmod.config.ts', 'madmod.config.js', 'madmod.config.mjs']
 
 export const loadConfig = (
   cwd: string,

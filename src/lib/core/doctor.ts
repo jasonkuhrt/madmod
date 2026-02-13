@@ -42,7 +42,7 @@ const checkConfigExists = (cwd: string) =>
       Effect.succeed<DoctorCheck>(DoctorCheck.Fail({
         category: 'setup',
         message: 'No config file found',
-        fix: 'Run `crossmod init` to create one',
+        fix: 'Run `madmod init` to create one',
       }))
     ),
   )
@@ -57,7 +57,7 @@ const checkConfigParses = (cwd: string) =>
       Effect.succeed<DoctorCheck>(DoctorCheck.Fail({
         category: 'setup',
         message: 'No config file found',
-        fix: 'Run `crossmod init` to create one',
+        fix: 'Run `madmod init` to create one',
       }))),
     Effect.catchTag('ConfigInvalid', (e) =>
       Effect.succeed<DoctorCheck>(DoctorCheck.Fail({
@@ -133,8 +133,7 @@ const checkFormatterDetected = (config: ResolvedConfig, cwd: string) =>
             message: "No formatter detected — generated files won't be auto-formatted",
             fix: 'Add `formatter: false` to config to suppress this warning',
           }),
-        onSome: (kind): DoctorCheck =>
-          DoctorCheck.Pass({ category: 'environment', message: `Formatter: ${kind}` }),
+        onSome: (kind): DoctorCheck => DoctorCheck.Pass({ category: 'environment', message: `Formatter: ${kind}` }),
       }),
     )
   })
@@ -142,7 +141,7 @@ const checkFormatterDetected = (config: ResolvedConfig, cwd: string) =>
 const checkCacheHealth = (cwd: string) =>
   Effect.gen(function*() {
     const fs = yield* FileSystem.FileSystem
-    const cachePath = `${cwd}/node_modules/.cache/crossmod/cache.json`
+    const cachePath = `${cwd}/node_modules/.cache/madmod/cache.json`
     const exists = yield* fs.exists(cachePath).pipe(
       Effect.catchAll(() => Effect.succeed(false)),
     )
@@ -154,24 +153,21 @@ const checkCacheHealth = (cwd: string) =>
     }
 
     const stat = yield* fs.stat(cachePath).pipe(
-      Effect.map(Option.some),
-      Effect.catchAll(() => Effect.succeed(Option.none())),
+      Effect.map((s) => s as FileSystem.File.Info | null),
+      Effect.catchAll(() => Effect.succeed(null as FileSystem.File.Info | null)),
     )
-    return pipe(
-      stat,
-      Option.match({
-        onNone: (): DoctorCheck =>
-          DoctorCheck.Fail({
-            category: 'environment',
-            message: 'Cache: unable to read',
-            fix: 'Delete cache: `rm -rf node_modules/.cache/crossmod/`',
-          }),
-        onSome: (s): DoctorCheck => {
-          const sizeKB = Math.round(Number(s.size) / 1024)
-          return DoctorCheck.Pass({ category: 'environment', message: `Cache: ${sizeKB}KB` })
-        },
-      }),
-    )
+    if (!stat) {
+      return DoctorCheck.Fail({
+        category: 'environment' as CheckCategory,
+        message: 'Cache: unable to read',
+        fix: 'Delete cache: `rm -rf node_modules/.cache/madmod/`',
+      })
+    }
+    const sizeKB = Math.round(Number(stat.size) / 1024)
+    return DoctorCheck.Pass({
+      category: 'environment' as CheckCategory,
+      message: `Cache: ${sizeKB}KB`,
+    })
   })
 
 // ---------------------------------------------------------------------------
@@ -208,7 +204,7 @@ const checkStaleness = (config: ResolvedConfig, cwd: string) =>
     return DoctorCheck.Fail({
       category: 'lint' as CheckCategory,
       message: `${stale.length} index files are stale (${parts})`,
-      fix: 'Run `crossmod generate` to fix',
+      fix: 'Run `madmod generate` to fix',
     })
   })
 
@@ -323,8 +319,7 @@ const checkUnmanagedDirectories = (config: ResolvedConfig, cwd: string) =>
         const relDir = relative(cwd, dir)
         suggestions.push(DoctorCheck.Suggestion({
           category: 'suggestion',
-          message:
-            `${relDir}/ has ${tsFiles.length} .ts files with no ${config.barrelFile} — consider adding a rule`,
+          message: `${relDir}/ has ${tsFiles.length} .ts files with no ${config.barrelFile} — consider adding a rule`,
         }))
       }
     }
@@ -364,7 +359,7 @@ const checkHandWrittenBarrels = (config: ResolvedConfig, cwd: string) =>
           const relPath = relative(cwd, barrelPath)
           suggestions.push(DoctorCheck.Suggestion({
             category: 'suggestion',
-            message: `${relPath} looks like a hand-written barrel — crossmod could manage it`,
+            message: `${relPath} looks like a hand-written barrel — madmod could manage it`,
           }))
         }
       }

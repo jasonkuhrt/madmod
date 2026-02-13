@@ -17,7 +17,7 @@ import { execute, plan } from './planner.js'
 
 let tmp: string
 
-const makeTmp = () => mkdtempSync(join(tmpdir(), 'crossmod-test-'))
+const makeTmp = () => mkdtempSync(join(tmpdir(), 'madmod-test-'))
 
 const writeFile = (relPath: string, content = '') => {
   const abs = join(tmp, relPath)

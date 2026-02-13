@@ -12,7 +12,7 @@ import {
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const CACHE_DIR = 'node_modules/.cache/crossmod'
+const CACHE_DIR = 'node_modules/.cache/madmod'
 
 const pidFilePath = (cwd: string): string => resolve(cwd, CACHE_DIR, 'daemon.pid')
 const logFilePath = (cwd: string): string => resolve(cwd, CACHE_DIR, 'daemon.log')

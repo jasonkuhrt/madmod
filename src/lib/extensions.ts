@@ -6,9 +6,9 @@ export type ExtensionMode = 'none' | '.js' | '.ts'
 
 export const detectExtensionMode = (cwd: string): Effect.Effect<ExtensionMode> =>
   Effect.gen(function*() {
-    const result = yield* Effect.tryPromise(() => parse(resolve(cwd, 'crossmod-probe.ts'), { root: cwd })).pipe(
+    const result = yield* Effect.tryPromise(() => parse(resolve(cwd, 'madmod-probe.ts'), { root: cwd })).pipe(
       Effect.catchAll(() => {
-        return Effect.logWarning('crossmod: could not read tsconfig.json, defaulting to no extensions').pipe(
+        return Effect.logWarning('madmod: could not read tsconfig.json, defaulting to no extensions').pipe(
           Effect.as(null),
         )
       }),

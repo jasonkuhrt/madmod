@@ -16,7 +16,7 @@ export class ScanCache extends Schema.TaggedClass<ScanCache>('ScanCache')('ScanC
   static is = Schema.is(ScanCache)
 }
 
-const CACHE_PATH = 'node_modules/.cache/crossmod/cache.json'
+const CACHE_PATH = 'node_modules/.cache/madmod/cache.json'
 
 const ScanCacheCodec = Schema.parseJson(ScanCache)
 
@@ -47,7 +47,7 @@ export const saveCache = (
     Effect.gen(function*() {
       const fs = yield* FileSystem.FileSystem
       const cachePath = `${cwd}/${CACHE_PATH}`
-      yield* fs.makeDirectory(`${cwd}/node_modules/.cache/crossmod`, { recursive: true })
+      yield* fs.makeDirectory(`${cwd}/node_modules/.cache/madmod`, { recursive: true })
       const json = yield* Schema.encode(ScanCacheCodec)(cache)
       yield* fs.writeFileString(cachePath, json)
     }),

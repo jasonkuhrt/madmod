@@ -79,6 +79,6 @@ export const formatFiles = (
       }
     },
     catch: (e) => {
-      console.warn(`crossmod: formatter (${kind}) failed:`, e)
+      console.warn(`madmod: formatter (${kind}) failed:`, e)
     },
   }).pipe(Effect.catchAll(() => Effect.void))

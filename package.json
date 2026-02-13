@@ -1,10 +1,10 @@
 {
-  "name": "crossmod",
+  "name": "madmod",
   "version": "0.0.0-dripip",
   "description": "Auto-generate and maintain TypeScript re-export index files",
   "repository": {
     "type": "git",
-    "url": "git+ssh://git@github.com/jasonkuhrt/crossmod.git"
+    "url": "git+ssh://git@github.com/jasonkuhrt/madmod.git"
   },
   "author": {
     "name": "Jason Kuhrt",
@@ -18,7 +18,7 @@
     "codegen"
   ],
   "bugs": {
-    "url": "https://github.com/jasonkuhrt/crossmod/issues"
+    "url": "https://github.com/jasonkuhrt/madmod/issues"
   },
   "packageManager": "pnpm@10.11.0",
   "license": "MIT",
@@ -36,8 +36,8 @@
     ".": "./build/exports/index.js"
   },
   "bin": {
-    "crossmod": "./build/bin/cli.js",
-    "xm": "./build/bin/cli.js"
+    "madmod": "./build/bin/cli.js",
+    "mm": "./build/bin/cli.js"
   },
   "scripts": {
     "build:toc": "markdown-toc README.md -i --maxdepth 4 && dprint fmt README.md",
