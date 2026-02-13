@@ -1,6 +1,6 @@
 {
   "name": "madmod",
-  "version": "0.0.0-dripip",
+  "version": "0.1.0",
   "description": "Auto-generate and maintain TypeScript re-export index files",
   "repository": {
     "type": "git",
